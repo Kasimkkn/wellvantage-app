@@ -1,0 +1,31 @@
+export const COLORS = {
+    primary: '#4CAF50', // Green from your UI
+    primaryDark: '#45a049',
+    white: '#FFFFFF',
+    black: '#000000',
+    gray: {
+        100: '#F5F5F5',
+        200: '#EEEEEE',
+        300: '#E0E0E0',
+        400: '#BDBDBD',
+        500: '#9E9E9E',
+        600: '#757575',
+        700: '#616161',
+        800: '#424242',
+        900: '#212121',
+    },
+    error: '#F44336',
+    success: '#4CAF50',
+    warning: '#FF9800',
+    info: '#2196F3',
+    background: '#FAFAFA',
+    card: '#FFFFFF',
+    border: '#E0E0E0',
+    text: {
+        primary: '#212121',
+        secondary: '#757575',
+        disabled: '#BDBDBD',
+        inverse: '#FFFFFF',
+    },
+    overlay: 'rgba(0, 0, 0, 0.5)',
+};
