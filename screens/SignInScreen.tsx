@@ -5,11 +5,15 @@ import { COLORS } from '@/constants/colors';
 import { FONT_SIZES, SPACING } from '@/constants/spacing';
 import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
+import { makeRedirectUri } from 'expo-auth-session';
+import * as Google from 'expo-auth-session/providers/google';
 import { useNavigation } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+WebBrowser.maybeCompleteAuthSession();
 
 export default function SignInScreen() {
     const { signInWithGoogle, isLoading, error, clearError } = useAuthStore();
@@ -17,16 +21,52 @@ export default function SignInScreen() {
     const [toastMessage, setToastMessage] = useState('');
     const [toastType, setToastType] = useState<'success' | 'error'>('error');
 
+    const redirectUri = makeRedirectUri({
+        scheme: 'wellvantageapp'
+    });
+    console.log('🔗 Redirect URI:', redirectUri);
+
+    const [request, response, promptAsync] = Google.useAuthRequest({
+        clientId: '509308286974-51u9h2b0l76rd7uvhb6tup0fkg68popm.apps.googleusercontent.com',
+        webClientId: '509308286974-51u9h2b0l76rd7uvhb6tup0fkg68popm.apps.googleusercontent.com',
+        redirectUri,
+    });
+
     useEffect(() => {
         if (error) {
             showErrorToast(error);
         }
     }, [error]);
 
+    // Handle Google auth response
+    useEffect(() => {
+        if (response?.type === 'success') {
+            const { authentication } = response;
+            handleGoogleSuccess(
+                authentication?.idToken!,
+                authentication?.accessToken
+            );
+        } else if (response?.type === 'error') {
+            showErrorToast('Google sign-in failed');
+        }
+    }, [response]);
+
     const handleGooglePress = async () => {
         try {
             console.log('🚀 Starting Google Sign-In...');
-            await signInWithGoogle();
+            await promptAsync();
+        } catch (err: any) {
+            console.error('❌ Sign-in error:', err);
+            showErrorToast(err.message || 'Failed to sign in');
+        }
+    };
+
+    const handleGoogleSuccess = async (
+        idToken: string,
+        accessToken?: string
+    ) => {
+        try {
+            await signInWithGoogle(idToken, accessToken);
             showSuccessToast('Successfully signed in!');
         } catch (err: any) {
             console.error('❌ Sign-in error:', err);
@@ -54,6 +94,7 @@ export default function SignInScreen() {
     if (isLoading) {
         return <LoadingSpinner fullScreen text="Signing you in..." />;
     }
+
     const insets = useSafeAreaInsets();
     const navigation = useNavigation();
 
@@ -91,7 +132,10 @@ export default function SignInScreen() {
                         WellVantage.
                     </Text>
 
-                    <GoogleSignInButton onClick={handleGooglePress} />
+                    <GoogleSignInButton
+                        onClick={handleGooglePress}
+                        loading={!request}
+                    />
                 </View>
             </View>
             <Toast

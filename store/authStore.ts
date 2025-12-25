@@ -4,7 +4,7 @@ import { AuthState, User } from '../types/auth.types';
 import { getToken, getUser } from '../utils/storage';
 
 interface AuthStore extends AuthState {
-    signInWithGoogle: () => Promise<void>;
+    signInWithGoogle: (idToken: string, accessToken?: string) => Promise<void>;
     logout: () => Promise<void>;
     loadUser: () => Promise<void>;
     setUser: (user: User | null) => void;
@@ -19,10 +19,14 @@ export const useAuthStore = create<AuthStore>((set) => ({
     isAuthenticated: false,
     error: null,
 
-    signInWithGoogle: async () => {
+    signInWithGoogle: async (idToken: string, accessToken?: string) => {
         set({ isLoading: true, error: null });
         try {
-            const authResponse = await authService.signInWithGoogle();
+            const authResponse = await authService.verifyGoogleToken({
+                idToken,
+                accessToken,
+            });
+
             set({
                 user: authResponse.user,
                 token: authResponse.access_token,

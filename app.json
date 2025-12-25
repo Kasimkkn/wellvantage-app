@@ -9,11 +9,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kasim.wellvantageapp"
     },
     "android": {
       "package": "com.kasim.wellvantageapp",
-      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -42,10 +42,7 @@
         }
       ],
       "@react-native-community/datetimepicker",
-      "@react-native-google-signin/google-signin",
-      "expo-web-browser",
-      "@react-native-firebase/app",
-      "@react-native-firebase/auth"
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
