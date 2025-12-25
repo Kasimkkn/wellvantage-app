@@ -62,7 +62,6 @@ export const SessionNameInput: React.FC<SessionNameInputProps> = ({
                 <Text style={[styles.value, !value && styles.placeholder]}>
                     {value || 'Select session type'}
                 </Text>
-                <Ionicons name="chevron-down" size={20} color={COLORS.gray[600]} />
             </TouchableOpacity>
 
             {error && <Text style={styles.error}>{error}</Text>}

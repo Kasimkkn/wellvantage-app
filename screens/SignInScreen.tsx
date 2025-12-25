@@ -7,7 +7,7 @@ import { useAuthStore } from '@/store/authStore';
 import { Ionicons } from '@expo/vector-icons';
 import { makeRedirectUri } from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
-import { useNavigation } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -16,6 +16,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 WebBrowser.maybeCompleteAuthSession();
 
 export default function SignInScreen() {
+    const router = useRouter();
     const { signInWithGoogle, isLoading, error, clearError } = useAuthStore();
     const [showToast, setShowToast] = useState(false);
     const [toastMessage, setToastMessage] = useState('');
@@ -24,8 +25,6 @@ export default function SignInScreen() {
     const redirectUri = makeRedirectUri({
         scheme: 'wellvantageapp'
     });
-    console.log('🔗 Redirect URI:', redirectUri);
-
     const [request, response, promptAsync] = Google.useAuthRequest({
         clientId: '509308286974-51u9h2b0l76rd7uvhb6tup0fkg68popm.apps.googleusercontent.com',
         webClientId: '509308286974-51u9h2b0l76rd7uvhb6tup0fkg68popm.apps.googleusercontent.com',
@@ -54,7 +53,9 @@ export default function SignInScreen() {
     const handleGooglePress = async () => {
         try {
             console.log('🚀 Starting Google Sign-In...');
-            await promptAsync();
+
+            router.replace('/(tabs)'); // or '/(tabs)/index'
+            // await promptAsync();
         } catch (err: any) {
             console.error('❌ Sign-in error:', err);
             showErrorToast(err.message || 'Failed to sign in');

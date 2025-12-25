@@ -87,7 +87,7 @@ export const Toast: React.FC<ToastProps> = ({
 const styles = StyleSheet.create({
     container: {
         position: 'absolute',
-        top: 50,
+        bottom: 15,
         left: SPACING.md,
         right: SPACING.md,
         flexDirection: 'row',

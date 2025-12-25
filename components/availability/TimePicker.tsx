@@ -66,7 +66,6 @@ export const TimePicker: React.FC<TimePickerProps> = ({
                 <Text style={styles.timeText}>
                     {value ? formatDisplayTime(value) : 'Select time'}
                 </Text>
-                <Ionicons name="chevron-down" size={20} color={COLORS.gray[600]} />
             </TouchableOpacity>
 
             {error && <Text style={styles.error}>{error}</Text>}
@@ -117,6 +116,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
 const styles = StyleSheet.create({
     container: {
         marginBottom: SPACING.md,
+        flex: 1
     },
     label: {
         fontSize: FONT_SIZES.sm,
