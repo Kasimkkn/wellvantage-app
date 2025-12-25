@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "509308286974",
+    "project_id": "wellvantage-482113",
+    "storage_bucket": "wellvantage-482113.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:509308286974:android:4de81284ad18bfc3b672af",
+        "android_client_info": {
+          "package_name": "com.kasim.wellvantageapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "509308286974-9s5mr4ptb3j473repuu5i3il0b7motkl.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.kasim.wellvantageapp",
+            "certificate_hash": "851ae84ab958bed5009ed32dcb115d0668e88ee8"
+          }
+        },
+        {
+          "client_id": "509308286974-51u9h2b0l76rd7uvhb6tup0fkg68popm.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBY1pgmuBysFMEfj59pde4hJSvckMTuJpk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "509308286974-3qaguk5dickebbsn3gllqpud5pni73oo.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -13,6 +13,7 @@
     },
     "android": {
       "package": "com.kasim.wellvantageapp",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -42,7 +43,9 @@
       ],
       "@react-native-community/datetimepicker",
       "@react-native-google-signin/google-signin",
-      "expo-web-browser"
+      "expo-web-browser",
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -1,47 +1,43 @@
-import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
-import { GOOGLE_WEB_CLIENT_ID } from '../constants/config';
+import auth from '@react-native-firebase/auth';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { AuthResponse, User } from '../types/auth.types';
 import { clearToken, clearUser, saveToken, saveUser } from '../utils/storage';
 import { apiService } from './api';
 
-WebBrowser.maybeCompleteAuthSession();
+GoogleSignin.configure({
+    // This is automatically read from google-services.json
+    // No manual configuration needed!
+});
 
 class AuthService {
-    // Initialize Google Auth Request
-    useGoogleAuth() {
-        const [request, response, promptAsync] = Google.useAuthRequest({
-            webClientId: GOOGLE_WEB_CLIENT_ID,
-            // For iOS
-            iosClientId: 'YOUR_IOS_CLIENT_ID.apps.googleusercontent.com', // Optional
-            // For Android
-            androidClientId: '509308286974-9s5mr4ptb3j473repuu5i3il0b7motkl.apps.googleusercontent.com', // Optional
-        });
+    async signInWithGoogle(): Promise<AuthResponse> {
+        try {
+            // Check if device supports Google Play
+            await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
+            // Get user's ID token
+            const { data, type } = await GoogleSignin.signIn();
 
-        return { request, response, promptAsync };
-    }
+            // Create Firebase credential
+            const googleCredential = auth.GoogleAuthProvider.credential(data?.idToken || null);
 
-    async handleGoogleResponse(response: any): Promise<AuthResponse> {
-        if (response?.type === 'success') {
-            const { authentication } = response;
+            // Sign in with Firebase
+            const userCredential = await auth().signInWithCredential(googleCredential);
 
-            // Get user info from Google
-            const userInfoResponse = await fetch(
-                'https://www.googleapis.com/userinfo/v2/me',
-                {
-                    headers: { Authorization: `Bearer ${authentication.accessToken}` },
-                }
-            );
+            const firebaseUser = userCredential.user;
 
-            const userInfo = await userInfoResponse.json();
+            console.log('✅ Firebase User:', firebaseUser);
 
-            const authResponse = await this.verifyGoogleToken({
-                googleId: userInfo.id,
-                email: userInfo.email,
-                name: userInfo.name,
-                profilePicture: userInfo.picture,
-                accessToken: authentication.accessToken,
+            // Get Firebase ID token to send to your backend
+            const firebaseIdToken = await firebaseUser.getIdToken();
+
+            // Send to your backend
+            const authResponse = await this.verifyFirebaseToken({
+                firebaseUid: firebaseUser.uid,
+                email: firebaseUser.email!,
+                name: firebaseUser.displayName!,
+                profilePicture: firebaseUser.photoURL || undefined,
+                firebaseToken: firebaseIdToken,
             });
 
             // Save token and user
@@ -49,24 +45,40 @@ class AuthService {
             await saveUser(authResponse.user);
 
             return authResponse;
-        }
+        } catch (error: any) {
+            console.error('❌ Google Sign-In Error:', error);
 
-        throw new Error('Google authentication failed');
+            if (error.code === 'SIGN_IN_CANCELLED') {
+                throw new Error('Sign in was cancelled');
+            } else if (error.code === 'IN_PROGRESS') {
+                throw new Error('Sign in is already in progress');
+            } else if (error.code === 'PLAY_SERVICES_NOT_AVAILABLE') {
+                throw new Error('Play services not available');
+            }
+
+            throw new Error(error.message || 'Google sign-in failed');
+        }
     }
 
-    async verifyGoogleToken(googleData: {
-        googleId: string;
+    async verifyFirebaseToken(firebaseData: {
+        firebaseUid: string;
         email: string;
         name: string;
         profilePicture?: string;
-        accessToken: string;
+        firebaseToken: string;
     }): Promise<AuthResponse> {
         try {
-            const response = await apiService.post<AuthResponse>('/auth/google/verify', googleData);
+            // Your backend will verify the Firebase token
+            const response = await apiService.post<AuthResponse>('/auth/firebase/verify', firebaseData);
             return response;
-        } catch (error) {
-            throw error;
+        } catch (error: any) {
+            console.error('❌ Backend verification error:', error);
+            throw new Error('Failed to verify with backend');
         }
+    }
+
+    async getCurrentUser(): Promise<any> {
+        return auth().currentUser;
     }
 
     async getProfile(): Promise<User> {
@@ -79,9 +91,12 @@ class AuthService {
 
     async logout(): Promise<void> {
         try {
+            await GoogleSignin.signOut();
+            await auth().signOut();
             await clearToken();
             await clearUser();
         } catch (error) {
+            console.error('Logout error:', error);
             throw error;
         }
     }
