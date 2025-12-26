@@ -1,37 +1,47 @@
+import { EmptyState } from '@/components/common/EmptyState';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Toast } from '@/components/common/Toast';
 import { COLORS } from '@/constants/colors';
 import { FONT_SIZES, SPACING } from '@/constants/spacing';
+import { useAvailabilityStore } from '@/store/availabilityStore';
+import { useBookingStore } from '@/store/bookingStore';
+import { BookingStatus } from '@/types/booking.types';
+import { formatDisplayTime } from '@/utils/dataFormatter';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import {
+    Alert,
+    RefreshControl,
     ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
-    View
+    View,
 } from 'react-native';
 
-interface TimeSlot {
-    id: string;
-    startTime: string;
-    endTime: string;
-    isBooked: boolean;
-}
-
-interface DayAvailability {
-    date: string;
-    slots: TimeSlot[];
-}
-
 export default function BookSlot() {
-    const [loading, setLoading] = useState(true);
-    const [selectedDate, setSelectedDate] = useState<string>('2025-02-06');
-    const [currentMonth, setCurrentMonth] = useState<Date>(new Date(2025, 1, 1)); // February 2025
-    const [availabilityData, setAvailabilityData] = useState<DayAvailability[]>([]);
-    const [sessionsLeft, setSessionsLeft] = useState(20);
-    const [clientName] = useState('Rahul Verma');
-    const [bookingDeadline] = useState('24 June 2026');
+    const {
+        availabilities,
+        isLoading: availabilityLoading,
+        fetchAvailabilities,
+    } = useAvailabilityStore();
+
+    const {
+        bookings,
+        isLoading: bookingLoading,
+        error: bookingError,
+        fetchBookings,
+        createBooking,
+        updateBookingStatus,
+        deleteBooking,
+        clearError,
+    } = useBookingStore();
+
+    const [selectedDate, setSelectedDate] = useState<string>(
+        new Date().toISOString().split('T')[0]
+    );
+    const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+    const [refreshing, setRefreshing] = useState(false);
 
     // Toast state
     const [toast, setToast] = useState({
@@ -40,45 +50,36 @@ export default function BookSlot() {
         type: 'success' as 'success' | 'error' | 'warning' | 'info',
     });
 
+    // Client info (static for now)
+    const [clientName] = useState('Rahul Verma');
+
     useEffect(() => {
-        loadAvailability();
+        loadData();
     }, []);
 
-    const loadAvailability = async () => {
-        setLoading(true);
-        try {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            // Mock data - dates with available slots
-            const mockData: DayAvailability[] = [
-                {
-                    date: '2025-02-06',
-                    slots: [
-                        { id: '1', startTime: '11:00 AM', endTime: '11:45 AM', isBooked: false },
-                        { id: '2', startTime: '05:00 PM', endTime: '05:30 PM', isBooked: false }
-                    ]
-                },
-                {
-                    date: '2025-02-07',
-                    slots: [
-                        { id: '3', startTime: '09:00 AM', endTime: '10:00 AM', isBooked: false },
-                        { id: '4', startTime: '02:00 PM', endTime: '03:00 PM', isBooked: true }
-                    ]
-                },
-                {
-                    date: '2025-02-13',
-                    slots: [
-                        { id: '5', startTime: '10:00 AM', endTime: '11:00 AM', isBooked: false }
-                    ]
-                }
-            ];
-
-            setAvailabilityData(mockData);
-        } catch (error) {
-            showToast('Failed to load availability', 'error');
-        } finally {
-            setLoading(false);
+    // Show error from store
+    useEffect(() => {
+        if (bookingError) {
+            showToast(bookingError, 'error');
+            clearError();
         }
+    }, [bookingError]);
+
+    const loadData = async () => {
+        try {
+            await Promise.all([
+                fetchAvailabilities(),
+                fetchBookings(),
+            ]);
+        } catch (err) {
+            console.error('Failed to load data:', err);
+        }
+    };
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await loadData();
+        setRefreshing(false);
     };
 
     const showToast = (message: string, type: typeof toast.type) => {
@@ -102,7 +103,7 @@ export default function BookSlot() {
 
     const hasAvailability = (day: number) => {
         const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        return availabilityData.some(av => av.date === dateStr);
+        return availabilities.some(av => av.date === dateStr);
     };
 
     const isSelectedDate = (day: number) => {
@@ -125,27 +126,66 @@ export default function BookSlot() {
         setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
     };
 
-    const handleBookSlot = (slotId: string) => {
-        setAvailabilityData(prev =>
-            prev.map(day => ({
-                ...day,
-                slots: day.slots.map(slot =>
-                    slot.id === slotId ? { ...slot, isBooked: true } : slot
-                )
-            }))
+    const getBookingForAvailability = (availabilityId: string, startTime: string) => {
+        return bookings.find(
+            booking =>
+                booking.availabilityId === availabilityId &&
+                booking.startTime === startTime &&
+                booking.bookingDate === selectedDate
         );
-        setSessionsLeft(prev => prev - 1);
-        showToast('Slot booked successfully!', 'success');
     };
 
-    const handleDeleteSlot = (slotId: string) => {
-        setAvailabilityData(prev =>
-            prev.map(day => ({
-                ...day,
-                slots: day.slots.filter(slot => slot.id !== slotId)
-            }))
+    const handleBookSlot = async (availabilityId: string, startTime: string, endTime: string) => {
+        try {
+            await createBooking({
+                availabilityId,
+                bookingDate: selectedDate,
+                startTime,
+                endTime,
+                status: BookingStatus.OPEN,
+            });
+            showToast('Slot booked successfully!', 'success');
+        } catch (err: any) {
+            showToast(err.message || 'Failed to book slot', 'error');
+        }
+    };
+
+    const handleToggleBookingStatus = async (bookingId: string, currentStatus: BookingStatus) => {
+        try {
+            const newStatus = currentStatus === BookingStatus.OPEN
+                ? BookingStatus.BOOKED
+                : BookingStatus.OPEN;
+
+            await updateBookingStatus(bookingId, newStatus);
+            showToast(
+                `Slot marked as ${newStatus === BookingStatus.BOOKED ? 'booked' : 'open'}`,
+                'success'
+            );
+        } catch (err: any) {
+            showToast(err.message || 'Failed to update booking status', 'error');
+        }
+    };
+
+    const handleDeleteBooking = async (bookingId: string) => {
+        Alert.alert(
+            'Delete Booking',
+            'Are you sure you want to delete this booking?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await deleteBooking(bookingId);
+                            showToast('Booking deleted successfully', 'success');
+                        } catch (err: any) {
+                            showToast(err.message || 'Failed to delete booking', 'error');
+                        }
+                    },
+                },
+            ]
         );
-        showToast('Slot deleted successfully', 'success');
     };
 
     const renderCalendar = () => {
@@ -169,16 +209,18 @@ export default function BookSlot() {
                     style={[
                         styles.calendarDay,
                         hasSlots && styles.calendarDayWithSlots,
-                        isSelected && styles.calendarDaySelected
+                        isSelected && styles.calendarDaySelected,
                     ]}
                     onPress={() => handleDateSelect(day)}
                     disabled={!hasSlots}
                 >
-                    <Text style={[
-                        styles.calendarDayText,
-                        hasSlots && styles.calendarDayTextActive,
-                        isSelected && styles.calendarDayTextSelected
-                    ]}>
+                    <Text
+                        style={[
+                            styles.calendarDayText,
+                            hasSlots && styles.calendarDayTextActive,
+                            isSelected && styles.calendarDayTextSelected,
+                        ]}
+                    >
                         {day}
                     </Text>
                 </TouchableOpacity>
@@ -192,7 +234,10 @@ export default function BookSlot() {
                         <Ionicons name="chevron-back" size={20} color={COLORS.text.primary} />
                     </TouchableOpacity>
                     <Text style={styles.calendarMonth}>
-                        {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                        {currentMonth.toLocaleDateString('en-US', {
+                            month: 'long',
+                            year: 'numeric',
+                        })}
                     </Text>
                     <TouchableOpacity onPress={handleNextMonth}>
                         <Ionicons name="chevron-forward" size={20} color={COLORS.text.primary} />
@@ -207,20 +252,23 @@ export default function BookSlot() {
                     ))}
                 </View>
 
-                <View style={styles.daysGrid}>
-                    {calendarDays}
-                </View>
+                <View style={styles.daysGrid}>{calendarDays}</View>
             </View>
         );
     };
 
-    const getSelectedDateSlots = () => {
-        const dayData = availabilityData.find(day => day.date === selectedDate);
-        return dayData?.slots || [];
+    const getSelectedDateAvailabilities = () => {
+        return availabilities.filter(av => av.date === selectedDate);
     };
 
-    if (loading) {
-        return <LoadingSpinner fullScreen text="Loading availability..." />;
+    const getTotalSessionsLeft = () => {
+        return bookings.filter(b => b.status === BookingStatus.OPEN).length;
+    };
+
+    const loading = availabilityLoading || bookingLoading;
+
+    if (loading && availabilities.length === 0 && !refreshing) {
+        return <LoadingSpinner fullScreen text="Loading bookings..." />;
     }
 
     return (
@@ -232,61 +280,145 @@ export default function BookSlot() {
                 onHide={hideToast}
             />
 
-            <ScrollView
-                style={styles.scrollView}
-                showsVerticalScrollIndicator={false}
-            >
-                <View style={styles.headerCard}>
-                    <Text style={styles.headerTitle}>Book Client Slots</Text>
-                    <Text style={styles.headerSubtitle}>
-                        {clientName} has {sessionsLeft} sessions left to book by {bookingDeadline}
-                    </Text>
-                </View>
+            {availabilities.length === 0 ? (
+                <EmptyState
+                    icon="calendar-outline"
+                    title="No Availability Set"
+                    description="Create availability slots first to enable bookings"
+                    actionText="Go to Availability"
+                    onAction={() => {
+                        // Navigate to availability tab
+                        // You can use router.push('/(tabs)/availability')
+                    }}
+                />
+            ) : (
+                <ScrollView
+                    style={styles.scrollView}
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={onRefresh}
+                            colors={[COLORS.primary]}
+                            tintColor={COLORS.primary}
+                        />
+                    }
+                >
+                    <View style={styles.headerCard}>
+                        <Text style={styles.headerTitle}>Book Client Slots</Text>
+                        <Text style={styles.headerSubtitle}>
+                            {clientName} has {getTotalSessionsLeft()} open session(s)
+                        </Text>
+                    </View>
 
-                {renderCalendar()}
+                    {renderCalendar()}
 
-                <View style={styles.slotsSection}>
-                    <Text style={styles.slotsTitle}>Available Slots:</Text>
+                    <View style={styles.slotsSection}>
+                        <Text style={styles.slotsTitle}>Available Slots:</Text>
 
-                    {getSelectedDateSlots().length === 0 ? (
-                        <View style={styles.noSlotsContainer}>
-                            <Text style={styles.noSlotsText}>
-                                No slots available for this date
-                            </Text>
-                        </View>
-                    ) : (
-                        getSelectedDateSlots().map(slot => (
-                            <View key={slot.id} style={styles.slotCard}>
-                                <View style={styles.slotInfo}>
-                                    <Text style={styles.slotTime}>
-                                        {slot.startTime} - {slot.endTime}
-                                    </Text>
-                                </View>
-
-                                <View style={[
-                                    styles.slotStatus,
-                                    slot.isBooked ? styles.slotStatusBooked : styles.slotStatusOpen
-                                ]}>
-                                    <Text style={[
-                                        styles.slotStatusText,
-                                        slot.isBooked ? styles.slotStatusTextBooked : styles.slotStatusTextOpen
-                                    ]}>
-                                        {slot.isBooked ? 'Booked' : 'Open'}
-                                    </Text>
-                                </View>
-                                <View style={styles.slotActions}>
-                                    <TouchableOpacity
-                                        style={styles.deleteButton}
-                                        onPress={() => handleDeleteSlot(slot.id)}
-                                    >
-                                        <Ionicons name="trash-outline" size={20} color={COLORS.error} />
-                                    </TouchableOpacity>
-                                </View>
+                        {getSelectedDateAvailabilities().length === 0 ? (
+                            <View style={styles.noSlotsContainer}>
+                                <Text style={styles.noSlotsText}>
+                                    No slots available for this date
+                                </Text>
                             </View>
-                        ))
-                    )}
-                </View>
-            </ScrollView>
+                        ) : (
+                            getSelectedDateAvailabilities().map(availability => {
+                                const booking = getBookingForAvailability(
+                                    availability.id,
+                                    availability.startTime
+                                );
+
+                                return (
+                                    <View key={availability.id} style={styles.slotCard}>
+                                        <View style={styles.slotInfo}>
+                                            <Text style={styles.slotTime}>
+                                                {formatDisplayTime(availability.startTime)} -{' '}
+                                                {formatDisplayTime(availability.endTime)}
+                                            </Text>
+                                            {/* <Text>
+                                                {availability.sessionName}
+                                            </Text> */}
+                                        </View>
+
+                                        {booking ? (
+                                            <>
+                                                <View
+                                                    style={[
+                                                        styles.slotStatus,
+                                                        booking.status === BookingStatus.BOOKED
+                                                            ? styles.slotStatusBooked
+                                                            : styles.slotStatusOpen,
+                                                    ]}
+                                                >
+                                                    <Text
+                                                        style={[
+                                                            styles.slotStatusText,
+                                                            booking.status === BookingStatus.BOOKED
+                                                                ? styles.slotStatusTextBooked
+                                                                : styles.slotStatusTextOpen,
+                                                        ]}
+                                                    >
+                                                        {booking.status === BookingStatus.BOOKED
+                                                            ? 'Booked'
+                                                            : 'Open'}
+                                                    </Text>
+                                                </View>
+
+                                                <View style={styles.slotActions}>
+                                                    <TouchableOpacity
+                                                        style={styles.actionButton}
+                                                        onPress={() =>
+                                                            handleToggleBookingStatus(
+                                                                booking.id,
+                                                                booking.status
+                                                            )
+                                                        }
+                                                    >
+                                                        <Ionicons
+                                                            name={
+                                                                booking.status === BookingStatus.BOOKED
+                                                                    ? 'checkmark-circle-outline'
+                                                                    : 'close-circle-outline'
+                                                            }
+                                                            size={20}
+                                                            color={COLORS.primary}
+                                                        />
+                                                    </TouchableOpacity>
+
+                                                    <TouchableOpacity
+                                                        style={styles.deleteButton}
+                                                        onPress={() => handleDeleteBooking(booking.id)}
+                                                    >
+                                                        <Ionicons
+                                                            name="trash-outline"
+                                                            size={20}
+                                                            color={COLORS.error}
+                                                        />
+                                                    </TouchableOpacity>
+                                                </View>
+                                            </>
+                                        ) : (
+                                            <TouchableOpacity
+                                                style={styles.bookButton}
+                                                onPress={() =>
+                                                    handleBookSlot(
+                                                        availability.id,
+                                                        availability.startTime,
+                                                        availability.endTime
+                                                    )
+                                                }
+                                            >
+                                                <Text style={styles.bookButtonText}>Book</Text>
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
+                                );
+                            })
+                        )}
+                    </View>
+                </ScrollView>
+            )}
         </View>
     );
 }
@@ -408,21 +540,19 @@ const styles = StyleSheet.create({
     },
     slotCard: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
+        marginBottom: SPACING.md,
+        justifyContent: 'flex-start',
         alignItems: 'center',
         gap: SPACING.md,
-        marginBottom: SPACING.sm,
     },
     slotInfo: {
-        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: SPACING.md,
+        justifyContent: 'flex-start',
         borderColor: COLORS.success,
-        borderWidth: 2,
+        borderWidth: 1,
         padding: SPACING.sm,
-        borderRadius: 8,
+        borderRadius: 5,
     },
     slotTime: {
         fontSize: FONT_SIZES.sm,
@@ -430,20 +560,18 @@ const styles = StyleSheet.create({
         color: COLORS.text.primary,
     },
     slotStatus: {
-        paddingHorizontal: SPACING.sm,
-        paddingVertical: SPACING.xs,
-        borderRadius: 6,
-        width: 70,
-        height: 40,
-        display: 'flex',
+        padding: SPACING.sm,
+        minWidth: 70,
+        borderRadius: 5,
         justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: COLORS.primary,
     },
     slotStatusOpen: {
         backgroundColor: '#E8F5E9',
     },
     slotStatusBooked: {
-        backgroundColor: COLORS.gray[200],
+        backgroundColor: COLORS.primary,
     },
     slotStatusText: {
         fontSize: FONT_SIZES.xs,
@@ -453,7 +581,7 @@ const styles = StyleSheet.create({
         color: '#2E7D32',
     },
     slotStatusTextBooked: {
-        color: COLORS.text.secondary,
+        color: COLORS.white,
     },
     slotActions: {
         flexDirection: 'row',
@@ -461,12 +589,25 @@ const styles = StyleSheet.create({
         gap: SPACING.sm,
     },
     bookButton: {
-        paddingHorizontal: SPACING.md,
-        minWidth: 80,
+        padding: SPACING.sm,
+        minWidth: 70,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: COLORS.primary,
+        borderRadius: 5,
     },
     deleteButton: {
         padding: SPACING.sm,
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    actionButton: {
+        padding: SPACING.xs,
+        borderRadius: 5,
+    },
+    bookButtonText: {
+        color: COLORS.white,
+        fontSize: FONT_SIZES.md,
+        fontWeight: '400',
     },
 });

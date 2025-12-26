@@ -22,6 +22,7 @@ export const useAvailabilityStore = create<AvailabilityStore>((set, get) => ({
             const availabilities = await availabilityService.getAll();
             set({ availabilities, isLoading: false });
         } catch (error: any) {
+            console.log("error in fecthing avail", error)
             set({ error: error.message || 'Failed to fetch availabilities', isLoading: false });
         }
     },
@@ -45,6 +46,7 @@ export const useAvailabilityStore = create<AvailabilityStore>((set, get) => ({
                 isLoading: false,
             }));
         } catch (error: any) {
+            console.log("Failed  to create", error.message)
             set({ error: error.message || 'Failed to create availability', isLoading: false });
             throw error;
         }

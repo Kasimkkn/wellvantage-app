@@ -8,23 +8,36 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Toast } from '@/components/common/Toast';
 import { COLORS } from '@/constants/colors';
 import { FONT_SIZES, SPACING } from '@/constants/spacing';
+import { useAvailabilityStore } from '@/store/availabilityStore';
+import { Availability } from '@/types/availability.types';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import {
+    RefreshControl,
     ScrollView,
     StyleSheet,
     Switch,
     Text,
     TouchableOpacity,
-    View
+    View,
 } from 'react-native';
-import { Availability } from '../types/availability.types';
 
 export default function AvailabilityScreen() {
-    const [availabilities, setAvailabilities] = useState<Availability[]>([]);
-    const [loading, setLoading] = useState(true);
+    // Zustand store
+    const {
+        availabilities,
+        isLoading,
+        error,
+        fetchAvailabilities,
+        createAvailability,
+        updateAvailability,
+        deleteAvailability,
+        clearError,
+    } = useAvailabilityStore();
+
     const [showForm, setShowForm] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [refreshing, setRefreshing] = useState(false);
 
     // Toast state
     const [toast, setToast] = useState({
@@ -43,50 +56,33 @@ export default function AvailabilityScreen() {
     });
 
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const [submitting, setSubmitting] = useState(false);
 
-    // Simulate loading data
+    // Load availabilities on mount
     useEffect(() => {
         loadAvailabilities();
     }, []);
 
-    const loadAvailabilities = async () => {
-        setLoading(true);
-        try {
-            // Simulate API call
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            // Mock data
-            const mockData: Availability[] = [
-                {
-                    id: '1',
-                    date: '2025-02-06',
-                    startTime: '11:45',
-                    endTime: '18:45',
-                    sessionName: 'Open',
-                    isRecurring: false,
-                    userId: '',
-                    createdAt: '',
-                    updatedAt: ''
-                },
-                {
-                    id: '2',
-                    date: '2025-02-07',
-                    startTime: '17:05',
-                    endTime: '17:30',
-                    sessionName: 'Open',
-                    isRecurring: false,
-                    userId: '',
-                    createdAt: '',
-                    updatedAt: ''
-                },
-            ];
-
-            setAvailabilities(mockData);
-        } catch (error) {
-            showToast('Failed to load availabilities', 'error');
-        } finally {
-            setLoading(false);
+    // Show error from store
+    useEffect(() => {
+        if (error) {
+            showToast(error, 'error');
+            clearError();
         }
+    }, [error]);
+
+    const loadAvailabilities = async () => {
+        try {
+            await fetchAvailabilities();
+        } catch (err) {
+            console.error('Failed to load availabilities:', err);
+        }
+    };
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await loadAvailabilities();
+        setRefreshing(false);
     };
 
     const showToast = (message: string, type: typeof toast.type) => {
@@ -120,6 +116,14 @@ export default function AvailabilityScreen() {
             }
         }
 
+        // Check if date is in the past
+        const selectedDate = new Date(formData.date);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (selectedDate < today) {
+            newErrors.date = 'Cannot create availability for past dates';
+        }
+
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
@@ -150,9 +154,13 @@ export default function AvailabilityScreen() {
         setShowForm(true);
     };
 
-    const handleDelete = (id: string) => {
-        setAvailabilities(prev => prev.filter(a => a.id !== id));
-        showToast('Availability deleted successfully', 'success');
+    const handleDelete = async (id: string) => {
+        try {
+            await deleteAvailability(id);
+            showToast('Availability deleted successfully', 'success');
+        } catch (err: any) {
+            showToast(err.message || 'Failed to delete availability', 'error');
+        }
     };
 
     const handleSubmit = async () => {
@@ -160,38 +168,33 @@ export default function AvailabilityScreen() {
             return;
         }
 
+        setSubmitting(true);
         try {
             if (editingId) {
                 // Update existing
-                setAvailabilities(prev =>
-                    prev.map(a =>
-                        a.id === editingId
-                            ? { ...a, ...formData }
-                            : a
-                    )
-                );
+                await updateAvailability(editingId, formData);
                 showToast('Availability updated successfully', 'success');
             } else {
                 // Create new
-                const newAvailability: Availability = {
-                    id: Date.now().toString(),
-                    ...formData,
-                    userId: '',
-                    createdAt: '',
-                    updatedAt: ''
-                };
-                setAvailabilities(prev => [...prev, newAvailability]);
+                await createAvailability(formData);
                 showToast('Availability created successfully', 'success');
             }
 
             setShowForm(false);
-        } catch (error) {
-            showToast('Failed to save availability', 'error');
+            resetForm();
+        } catch (err: any) {
+            showToast(err.message || 'Failed to save availability', 'error');
+        } finally {
+            setSubmitting(false);
         }
     };
 
     const handleCancel = () => {
         setShowForm(false);
+        resetForm();
+    };
+
+    const resetForm = () => {
         setEditingId(null);
         setFormData({
             date: new Date().toISOString().split('T')[0],
@@ -203,7 +206,8 @@ export default function AvailabilityScreen() {
         setErrors({});
     };
 
-    if (loading) {
+    // Initial loading
+    if (isLoading && availabilities.length === 0 && !refreshing) {
         return <LoadingSpinner fullScreen text="Loading availabilities..." />;
     }
 
@@ -226,9 +230,7 @@ export default function AvailabilityScreen() {
                 />
             ) : showForm ? (
                 <>
-                    <View
-                        style={styles.formContainer}
-                    >
+                    <View style={styles.formContainer}>
                         <View style={styles.formHeader}>
                             <Text style={styles.formTitle}>
                                 {editingId ? 'Edit Availability' : 'Set Availability'}
@@ -242,6 +244,9 @@ export default function AvailabilityScreen() {
                         >
                             <View style={styles.formSection}>
                                 <Text style={styles.sectionTitle}>Date*</Text>
+                                {errors.date && (
+                                    <Text style={styles.errorText}>{errors.date}</Text>
+                                )}
                                 <CalendarPicker
                                     selectedDate={formData.date}
                                     onDateSelect={(date) =>
@@ -308,12 +313,15 @@ export default function AvailabilityScreen() {
                                 onPress={handleCancel}
                                 variant="outline"
                                 style={styles.footerButton}
+                                disabled={submitting}
                             />
                             <Button
                                 title={editingId ? 'Update' : 'Create'}
                                 onPress={handleSubmit}
                                 variant="primary"
                                 style={styles.footerButton}
+                                loading={submitting}
+                                disabled={submitting}
                             />
                         </View>
                     </View>
@@ -323,15 +331,25 @@ export default function AvailabilityScreen() {
                     <ScrollView
                         style={styles.scrollView}
                         showsVerticalScrollIndicator={false}
-                    >
-                        {availabilities.map(availability => (
-                            <AvailabilityCard
-                                key={availability.id}
-                                availability={availability}
-                                onEdit={handleEdit}
-                                onDelete={handleDelete}
+                        refreshControl={
+                            <RefreshControl
+                                refreshing={refreshing}
+                                onRefresh={onRefresh}
+                                colors={[COLORS.primary]}
+                                tintColor={COLORS.primary}
                             />
-                        ))}
+                        }
+                    >
+                        <View style={styles.listContainer}>
+                            {availabilities.map((availability) => (
+                                <AvailabilityCard
+                                    key={availability.id}
+                                    availability={availability}
+                                    onEdit={handleEdit}
+                                    onDelete={handleDelete}
+                                />
+                            ))}
+                        </View>
                     </ScrollView>
 
                     <View style={styles.fabContainer}>
@@ -345,7 +363,6 @@ export default function AvailabilityScreen() {
                     </View>
                 </>
             )}
-
         </View>
     );
 }
@@ -353,10 +370,13 @@ export default function AvailabilityScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: COLORS.white
+        backgroundColor: COLORS.background,
     },
     scrollView: {
         flex: 1,
+    },
+    listContainer: {
+        padding: SPACING.md,
     },
     fabContainer: {
         position: 'absolute',
@@ -378,11 +398,16 @@ const styles = StyleSheet.create({
     },
     formContainer: {
         flex: 1,
+        backgroundColor: COLORS.background,
     },
     formHeader: {
         flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'center',
+        paddingVertical: SPACING.lg,
+        paddingHorizontal: SPACING.md,
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.border,
     },
     formTitle: {
         fontSize: FONT_SIZES.xl,
@@ -396,13 +421,12 @@ const styles = StyleSheet.create({
         padding: SPACING.md,
     },
     formSection: {
-        marginBottom: SPACING.md,
+        marginBottom: SPACING.lg,
     },
     formTimeSection: {
-        marginBottom: SPACING.md,
-        display: 'flex',
+        marginBottom: SPACING.lg,
         flexDirection: 'row',
-        justifyContent: 'center',
+        justifyContent: 'space-between',
         gap: SPACING.md,
     },
     sectionTitle: {
@@ -411,23 +435,33 @@ const styles = StyleSheet.create({
         color: COLORS.text.primary,
         marginBottom: SPACING.sm,
     },
+    errorText: {
+        fontSize: FONT_SIZES.xs,
+        color: COLORS.error,
+        marginBottom: SPACING.xs,
+    },
     repeatContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: SPACING.xs,
+        padding: SPACING.md,
         backgroundColor: COLORS.white,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: COLORS.border,
     },
     repeatLabel: {
         fontSize: FONT_SIZES.md,
         fontWeight: '600',
         color: COLORS.text.primary,
-        marginBottom: SPACING.xs,
     },
     formFooter: {
         flexDirection: 'row',
         gap: SPACING.md,
         padding: SPACING.lg,
+        borderTopWidth: 1,
+        borderTopColor: COLORS.border,
+        backgroundColor: COLORS.white,
     },
     footerButton: {
         flex: 1,

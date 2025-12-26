@@ -1,5 +1,4 @@
 import { API_CONFIG } from '@/constants/config';
-import { clearToken, getToken } from '@/utils/storage';
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig } from 'axios';
 
 class ApiService {
@@ -18,12 +17,10 @@ class ApiService {
     }
 
     private setupInterceptors() {
+        // No auth token needed anymore
         this.api.interceptors.request.use(
             async (config) => {
-                const token = await getToken();
-                if (token) {
-                    config.headers.Authorization = `Bearer ${token}`;
-                }
+                // Remove token logic
                 return config;
             },
             (error) => {
@@ -34,9 +31,6 @@ class ApiService {
         this.api.interceptors.response.use(
             (response) => response,
             async (error: AxiosError) => {
-                if (error.response?.status === 401) {
-                    await clearToken();
-                }
                 return Promise.reject(this.handleError(error));
             }
         );
